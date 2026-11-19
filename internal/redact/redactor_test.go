@@ -89,6 +89,7 @@ func TestRedactString(t *testing.T) {
 		{"emoji around values", "💳4111111111111111💳 and 😀zed@example.com😀",
 			"💳************1111💳 and 😀****😀"},
 		{"already redacted", "************1111 and ****", "************1111 and ****"},
+		{"card at end of sentence", "pay with 5555555555554444.", "pay with ************4444."},
 	}
 
 	for _, tc := range tests {
