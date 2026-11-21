@@ -1,0 +1,88 @@
+# Runs the redactor service: Kubernetes keeps two identical pods running,
+# restarts them if they fail, and replaces them one at a time on updates.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redactor
+  labels:
+    app: redactor
+spec:
+  # Two copies: one can fail, or be replaced during an update, while the
+  # other keeps serving.
+  replicas: 2
+  # The Deployment manages the pods that carry this label.
+  selector:
+    matchLabels:
+      app: redactor
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0 # start a new pod before stopping an old one
+      maxSurge: 1
+  # The template every pod is created from.
+  template:
+    metadata:
+      labels:
+        app: redactor
+    spec:
+      # On shutdown, Kubernetes sends SIGTERM and waits this long before
+      # killing the pod. The redactor finishes running requests within 20s.
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault # block system calls a normal program never needs
+      containers:
+        - name: redactor
+          # For kind: build with "docker build -t redactor:1.0 ." and copy it
+          # into the cluster with "kind load docker-image redactor:1.0".
+          # For a real cluster: push the image to a registry and put its full
+          # name here, e.g. registry.example.com/redactor:1.0.
+          image: redactor:1.0
+          imagePullPolicy: IfNotPresent
+          args: ["--serve", "--addr", ":8080", "--rules", "/etc/redactor/rules.yaml"]
+          ports:
+            - name: http
+              containerPort: 8080
+          # Send traffic to a pod only while /healthz answers. The rules are
+          # loaded before the server starts listening, so a pod with broken
+          # rules never becomes ready and never receives traffic.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+          # Restart a pod whose /healthz stops answering (3 misses in a row).
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            # What the scheduler reserves for each pod on a machine.
+            requests:
+              cpu: 100m # a tenth of a CPU core
+              memory: 64Mi
+            # A pod that goes over its memory limit is killed and restarted,
+            # which protects the other pods on the machine. Memory per request
+            # is bounded by the longest line (16 MiB), so this leaves room for
+            # several requests with very long lines at once. There is no CPU
+            # limit: it would only slow the service down when it's busy.
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true # the redactor never writes to disk
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: rules
+              mountPath: /etc/redactor
+              readOnly: true
+      volumes:
+        - name: rules
+          configMap:
+            name: redactor-rules

@@ -1,0 +1,92 @@
+# The redaction rules, stored in the cluster. The Deployment mounts this as
+# the file /etc/redactor/rules.yaml in every pod, so the rules can change
+# without rebuilding the image. The pods read the rules when they start, so
+# after changing them run: kubectl rollout restart deployment/redactor
+#
+# This must stay identical to rules.yaml in the project root;
+# TestConfigMapMatchesRulesFile fails if the two copies differ.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redactor-rules
+  labels:
+    app: redactor
+data:
+  rules.yaml: |
+    # Redaction rules for API traffic logs.
+    version: 1
+
+    settings:
+      mask:    { replacement: "****" }
+      partial: { keep_last: 4, fill: "*" }
+      hash:    { algorithm: sha256 }
+
+    # key_rules match on the NAME of a JSON key or HTTP header.
+    #   scope: headers | body | any
+    #   match: either { exact: [names...] } or { regex: "..." }
+    key_rules:
+      - name: auth-headers
+        scope: headers
+        match:
+          exact: [Authorization, Proxy-Authorization, X-Auth-Token, Cookie, Set-Cookie]
+        action: mask
+
+      - name: api-key-names
+        scope: any
+        match:
+          regex: '(?i)^(x-)?api[_-]?key$'
+        action: hash
+
+      - name: secret-fields
+        scope: body
+        match:
+          regex: '(?i)^(password|passwd|pwd|secret|client_secret|token)$'
+        action: mask
+
+      - name: card-number-fields
+        scope: body
+        match:
+          regex: '(?i)^(card_?number|pan)$'
+        action: partial
+
+      - name: cvv-fields
+        scope: body
+        match:
+          regex: '(?i)^(cvv|cvc|cvv2)$'
+        action: remove
+
+    # value_rules match on the CONTENT of any string value, whatever its key is called.
+    #   validator (optional): the match only counts if the validator accepts it. Supported: luhn
+    value_rules:
+      # A credential written as name=value inside free text, for example in a
+      # debug message: "login attempt password=hunter2 for user=zed". The whole
+      # pair is masked. It runs first, so the pair is masked in one piece before
+      # other rules look inside it. (Form data and query strings are split into
+      # pairs before the value rules run, so there the key rules handle these
+      # names and the name is kept: "password=****".)
+      - name: secret-assignment
+        pattern: '(?i)\b(?:password|passwd|pwd|secret|client_secret|(?:access_|refresh_|id_)?token|api[_-]?key)=[^\s&"]+'
+        action: mask
+
+      - name: email
+        pattern: '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
+        action: hash
+
+      # A JWT is three base64url parts separated by dots: header.payload.signature.
+      # base64url (RFC 7515) uses the letters, digits, '-' and '_', with no '='
+      # padding. The signature may be empty (an unsigned token ends with '.').
+      - name: jwt
+        pattern: 'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*'
+        action: mask
+
+      # Card numbers written without gaps (13-19 digits), or in the usual groups
+      # separated by spaces or dashes: 4-4-4-4 (most cards) and 4-6-5 or 4-6-4
+      # (American Express, Diners). The Luhn check ignores the separators.
+      - name: credit-card
+        pattern: '\b(?:\d{13,19}|\d{4}[ -]\d{4}[ -]\d{4}[ -]\d{4}|\d{4}[ -]\d{6}[ -]\d{4,5})\b'
+        validator: luhn
+        action: partial
+
+      - name: api-key-prefix
+        pattern: '\bsk_(?:live|test)_[A-Za-z0-9]+\b'
+        action: mask

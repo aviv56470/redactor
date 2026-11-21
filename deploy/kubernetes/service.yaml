@@ -1,0 +1,17 @@
+# One stable name and address for the redactor pods. Other services in the
+# cluster send requests to http://redactor/redact, and Kubernetes spreads them
+# across the pods that are ready.
+apiVersion: v1
+kind: Service
+metadata:
+  name: redactor
+  labels:
+    app: redactor
+spec:
+  type: ClusterIP # reachable only from inside the cluster
+  selector:
+    app: redactor # send traffic to pods with this label
+  ports:
+    - name: http
+      port: 80 # the port clients use
+      targetPort: http # the container port named "http" (8080)
