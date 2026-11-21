@@ -54,8 +54,11 @@ value_rules:
     pattern: 'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*'
     action: mask
 
+  # Card numbers written without gaps (13-19 digits), or in the usual groups
+  # separated by spaces or dashes: 4-4-4-4 (most cards) and 4-6-5 or 4-6-4
+  # (American Express, Diners). The Luhn check ignores the separators.
   - name: credit-card
-    pattern: '\b\d{13,19}\b'
+    pattern: '\b(?:\d{13,19}|\d{4}[ -]\d{4}[ -]\d{4}[ -]\d{4}|\d{4}[ -]\d{6}[ -]\d{4,5})\b'
     validator: luhn
     action: partial
 

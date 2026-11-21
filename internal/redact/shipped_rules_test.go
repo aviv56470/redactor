@@ -53,3 +53,54 @@ func TestShippedJWTRule(t *testing.T) {
 		})
 	}
 }
+
+func TestShippedCardRule(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"no gaps",
+			`{"body":{"n":"4111111111111111"}}`,
+			`{"body":{"n":"************1111"}}`},
+		{"groups of 4 with spaces (sample line 1)",
+			`{"body":{"note":"card 4111 1111 1111 1111 on file"}}`,
+			`{"body":{"note":"card ***************1111 on file"}}`},
+		{"groups of 4 with dashes (sample line 6)",
+			`{"body":{"message":"please charge 5555-5555-5555-4444 and send the receipt"}}`,
+			`{"body":{"message":"please charge ***************4444 and send the receipt"}}`},
+		{"American Express 4-6-5 and Diners 4-6-4 (sample line 36)",
+			`{"body":{"note":"amex 3782 822463 10005, diners 3056 930902 5904"}}`,
+			`{"body":{"note":"amex *************0005, diners ************5904"}}`},
+		{"in an array (sample line 44)",
+			`{"body":["5555 5555 5555 4444"]}`,
+			`{"body":["***************4444"]}`},
+		{"grouped number failing Luhn is kept",
+			`{"body":{"n":"4111 1111 1111 1112"}}`,
+			`{"body":{"n":"4111 1111 1111 1112"}}`},
+		{"card followed by another number",
+			`{"body":{"n":"4111 1111 1111 1111 12 items"}}`,
+			`{"body":{"n":"***************1111 12 items"}}`},
+		{"dates and phone numbers are not cards",
+			`{"body":{"n":"2025-01-15 +1 (415) 555-0132"}}`,
+			`{"body":{"n":"2025-01-15 +1 (415) 555-0132"}}`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rules, err := LoadRules("../../rules.yaml")
+			if err != nil {
+				t.Fatalf("LoadRules: %v", err)
+			}
+			rd := NewRedactor(rules)
+
+			got, err := rd.RedactLine([]byte(tc.input))
+			if err != nil {
+				t.Fatalf("RedactLine: %v", err)
+			}
+			if string(got) != tc.want {
+				t.Errorf("\n got: %s\nwant: %s", got, tc.want)
+			}
+		})
+	}
+}
