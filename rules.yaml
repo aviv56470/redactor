@@ -47,8 +47,11 @@ value_rules:
     pattern: '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
     action: hash
 
+  # A JWT is three base64url parts separated by dots: header.payload.signature.
+  # base64url (RFC 7515) uses the letters, digits, '-' and '_', with no '='
+  # padding. The signature may be empty (an unsigned token ends with '.').
   - name: jwt
-    pattern: 'eyJ[A-Za-z0-9+/=]+\.[A-Za-z0-9+/=]+\.[A-Za-z0-9+/=]*'
+    pattern: 'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*'
     action: mask
 
   - name: credit-card

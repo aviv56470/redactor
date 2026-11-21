@@ -68,6 +68,11 @@ func TestSampleFile(t *testing.T) {
 	if !strings.Contains(stderr, "48 lines, 3 rejected, 2 blank lines skipped") {
 		t.Errorf("unexpected line counts in summary:\n%s", stderr)
 	}
+	// The sample has four JWTs outside the Authorization headers (lines 11,
+	// 15 twice, and 16). The original rules.yaml only matched two of them.
+	if !strings.Contains(stderr, "jwt                  4") {
+		t.Errorf("expected 4 JWT redactions in summary:\n%s", stderr)
+	}
 	// Lines 20, 21 and 50 are broken. Their content must not be printed.
 	for _, secret := range []string{"erin@example.com", "trunc@exam", "eyJzdWIi"} {
 		if strings.Contains(stderr, secret) || strings.Contains(first, secret) {
