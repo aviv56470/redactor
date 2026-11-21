@@ -16,9 +16,10 @@ const maxDepth = 1000
 type location int
 
 const (
-	inEnvelope location = iota // the transaction itself: ts, method, path, response, ...
+	inEnvelope location = iota // the transaction itself: ts, method, response, ...
 	inHeaders                  // an HTTP headers object
 	inBody                     // a request or response body
+	inPath                     // the request path, including its query string
 )
 
 // RedactLine redacts one NDJSON line (without its trailing newline) and
@@ -67,11 +68,11 @@ func (rd *Redactor) walk(dec *json.Decoder, w *jsonWriter, loc location, forced 
 		return fmt.Errorf("unexpected %q", t)
 
 	case string:
-		if forced != nil {
-			w.writeString(rd.applyKeyRule(forced, t))
-		} else {
-			w.writeString(rd.redactString(t))
+		out, err := rd.redactText(t, loc, forced, depth)
+		if err != nil {
+			return err
 		}
+		w.writeString(out)
 
 	case json.Number:
 		s := string(t)
@@ -98,7 +99,6 @@ func (rd *Redactor) walk(dec *json.Decoder, w *jsonWriter, loc location, forced 
 		return fmt.Errorf("unexpected JSON token of type %T", t)
 	}
 	return nil
-
 }
 
 // walkObject handles everything after an opening '{'.
@@ -170,7 +170,7 @@ func (rd *Redactor) walkArray(dec *json.Decoder, w *jsonWriter, loc location, fo
 }
 
 // childLocation decides where the value under key is. Only at the top of a
-// transaction do "headers" and "body" switch to header or body rules, so a
+// transaction do "headers", "body" and "path" switch the location, so a
 // field called "headers" inside a body is still just body data.
 func childLocation(loc location, key string) location {
 	if loc != inEnvelope {
@@ -181,6 +181,8 @@ func childLocation(loc location, key string) location {
 		return inHeaders
 	case "body":
 		return inBody
+	case "path":
+		return inPath
 	}
 	return inEnvelope
 }
