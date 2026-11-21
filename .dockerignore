@@ -1,0 +1,10 @@
+# Files Docker doesn't send to the build. Keeping them out makes builds faster
+# and means editing them doesn't invalidate Docker's build cache.
+# (deploy/ and testdata/ must stay: the tests that run during the build read them.)
+.git
+.vscode
+.idea
+*.md
+# compiled binaries
+redactor
+*.exe
