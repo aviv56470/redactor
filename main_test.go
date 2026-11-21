@@ -88,3 +88,43 @@ func TestSampleFile(t *testing.T) {
 		t.Errorf("running on its own output changed it")
 	}
 }
+
+// Every secret planted in the sample file must be gone from the output.
+// (The SSN, phone number and date of birth on line 37 are not covered by the
+// rules on purpose; see the README.)
+func TestSampleFileLeaksNoKnownSecrets(t *testing.T) {
+	code, stdout, stderr := runRedactor(t, "", "testdata/input.ndjson")
+	if code != exitOK {
+		t.Fatalf("exit code %d, stderr:\n%s", code, stderr)
+	}
+	output := stdout + stderr
+
+	secrets := []string{
+		// passwords, keys and tokens
+		"hunter2", "p@ssw0rd!", "deepsecret", "sk_live_", "demo_key_",
+		"dXNlcjpwYXNz", "mufasa", "session=abc123", "abc123def456",
+		"eyJhbGciOi", "_adQssw5c",
+		// card numbers, in every format used in the sample
+		"4111111111111111", "4111 1111 1111 1111", "4012888888881881",
+		"5555555555554444", "5555-5555-5555-4444", "5555 5555 5555 4444",
+		"378282246310005", "3782 822463 10005", "30569309025904",
+		"6011111111111117",
+		// emails, including URL-encoded and escaped ones
+		"a@b.com", "jane.doe+billing@example.co.uk", "alice@example.com",
+		"bob@example.org", "carol@example.net", "tanaka@example.co.jp",
+		"bob%40example.com", "gina%40example.com", "dave@example.com",
+		"hank@example.com", "ivan@example.com", "deep@example.com",
+		"zed@example.com", "user@example.com", "UPPER@EXAMPLE.COM",
+		"tom@example.com", "first@example.com", "second@example.com",
+		"a1@x.com", "a5@x.com",
+		// content of the broken lines
+		"erin@example.com", "trunc@exam",
+		// a removed field
+		`"cvv"`,
+	}
+	for _, secret := range secrets {
+		if strings.Contains(output, secret) {
+			t.Errorf("%q is still in the output", secret)
+		}
+	}
+}

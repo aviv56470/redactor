@@ -104,3 +104,48 @@ func TestShippedCardRule(t *testing.T) {
 		})
 	}
 }
+
+func TestShippedSecretAssignmentRule(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"password inside a debug message (sample line 41)",
+			`{"body":{"debug":"login attempt password=hunter2 for user=zed"}}`,
+			`{"body":{"debug":"login attempt **** for user=zed"}}`},
+		{"any case, other credential names",
+			`{"body":{"msg":"retry with TOKEN=abc123 and api_key=k-9"}}`,
+			`{"body":{"msg":"retry with **** and ****"}}`},
+		{"stops at the next & in a URL inside text",
+			`{"body":{"msg":"redirect to /cb?access_token=xyz&state=1 now"}}`,
+			`{"body":{"msg":"redirect to /cb?****&state=1 now"}}`},
+		{"in a header value",
+			`{"headers":{"X-Debug":"password=hunter2"}}`,
+			`{"headers":{"X-Debug":"****"}}`},
+		{"longer names are not credentials",
+			`{"body":{"msg":"password_hint=pet tokenizer=bpe"}}`,
+			`{"body":{"msg":"password_hint=pet tokenizer=bpe"}}`},
+		{"form data keeps the name (handled by the key rules)",
+			`{"body":"user=zed&password=hunter2"}`,
+			`{"body":"user=zed&password=****"}`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rules, err := LoadRules("../../rules.yaml")
+			if err != nil {
+				t.Fatalf("LoadRules: %v", err)
+			}
+			rd := NewRedactor(rules)
+
+			got, err := rd.RedactLine([]byte(tc.input))
+			if err != nil {
+				t.Fatalf("RedactLine: %v", err)
+			}
+			if string(got) != tc.want {
+				t.Errorf("\n got: %s\nwant: %s", got, tc.want)
+			}
+		})
+	}
+}

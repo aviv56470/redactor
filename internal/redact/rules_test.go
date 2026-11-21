@@ -11,8 +11,8 @@ func TestLoadProvidedRules(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadRules: %v", err)
 	}
-	if len(r.KeyRules) != 5 || len(r.ValueRules) != 4 {
-		t.Fatalf("got %d key rules and %d value rules, want 5 and 4",
+	if len(r.KeyRules) != 5 || len(r.ValueRules) != 5 {
+		t.Fatalf("got %d key rules and %d value rules, want 5 and 5",
 			len(r.KeyRules), len(r.ValueRules))
 	}
 }

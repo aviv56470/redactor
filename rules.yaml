@@ -43,6 +43,16 @@ key_rules:
 # value_rules match on the CONTENT of any string value, whatever its key is called.
 #   validator (optional): the match only counts if the validator accepts it. Supported: luhn
 value_rules:
+  # A credential written as name=value inside free text, for example in a
+  # debug message: "login attempt password=hunter2 for user=zed". The whole
+  # pair is masked. It runs first, so the pair is masked in one piece before
+  # other rules look inside it. (Form data and query strings are split into
+  # pairs before the value rules run, so there the key rules handle these
+  # names and the name is kept: "password=****".)
+  - name: secret-assignment
+    pattern: '(?i)\b(?:password|passwd|pwd|secret|client_secret|(?:access_|refresh_|id_)?token|api[_-]?key)=[^\s&"]+'
+    action: mask
+
   - name: email
     pattern: '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
     action: hash
