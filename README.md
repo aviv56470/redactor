@@ -27,6 +27,7 @@ Requires Go 1.27 or later. The only dependency is the YAML parser
 go build -o redactor .        # on Windows: go build -o redactor.exe .
 go test ./...
 go vet ./...
+go test -bench . -benchmem ./internal/redact/    # speed per line
 ```
 
 ### Command line
@@ -434,21 +435,28 @@ tests pass with only the files Docker receives.
 
 ## 6. Inline on live traffic with a sub-millisecond budget
 
-Inline, the redactor would sit in the request path, so I'd move it from a
-separate service into the proxy process itself (as a library, or a sidecar
-over a Unix socket) and redact one request at a time instead of an NDJSON
-stream, which removes a network hop that alone can cost more than the budget.
-Inside, I'd stop allocating per token: `json.Decoder.Token` allocates for
-every value, so I'd use a scanner that copies everything byte for byte and
-only looks at keys and strings, and reuse buffers between requests instead of
-allocating new ones. Key rules would become a hash-map lookup on the lowercased
-key name, with the result cached, since the same header and field names
-appear on almost every request. Instead of running every value regex over
-every string, I'd first check cheaply for the fixed text each rule needs
-(`@` for emails, `eyJ` for JWTs, a run of digits for cards, `sk_` for API
-keys) and only run a regex when that text is present. I'd cap how many body
-bytes are inspected inline and send larger bodies to an asynchronous path. To
-stay fail-closed under the time limit, a request that runs over its budget
-would have its body masked entirely rather than passed through. Finally, I'd
-measure all of this with Go benchmarks and the profiler against realistic
-traffic, and track the 99th-percentile latency rather than the average.
+Today the redactor works after the fact: traffic is logged first and redacted
+before it's stored, so no user waits for it. Inline, it would sit in the path
+of every live request, and all of its work would be added to every user's
+response time. First I'd remove the network hop: calling a separate service for
+every request could use up most of the budget by itself, so the redaction would
+run inside the proxy as a library (a plain function call), or as a helper
+process on the same machine reached through a Unix socket. Next I'd go where
+the time actually goes. The benchmark (`BenchmarkRedactLine`) and the profiler
+show about 43 microseconds per sample line on my laptop (AMD Ryzen 7 3700X),
+with about 60% of it in the value-rule regexes and under 20% in reading and
+writing JSON (about 7% in the decoder, 11% in writing strings). Every value
+rule needs some fixed text to match (`@` for an email, `eyJ` for a JWT, `sk_`
+for an API key, digits for a card number), and checking for that text is far
+cheaper than running a regex, so most strings would skip the regexes entirely;
+key-rule decisions would be remembered per key name, since the same names
+appear on almost every request. Then I'd create fewer objects per request, by
+walking the bytes directly instead of creating an object for every JSON token
+and by reusing buffers between requests. I'd test that parser very carefully,
+because in a redactor a parsing mistake can become a leak. Large bodies would
+be inspected inline only up to a fixed size, with the rest handled afterwards,
+outside the request, and a request that runs out of time would have its logged
+copy fully masked rather than stored unredacted (the request itself is
+forwarded unchanged). Throughout, I'd measure on realistic traffic and track
+the 99th-percentile time, what one user in a hundred waits for, rather than the
+average.
