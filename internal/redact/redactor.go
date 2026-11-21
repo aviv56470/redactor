@@ -16,16 +16,19 @@ const hashPrefix = "sha256:"
 var hashedValue = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
 // Redactor applies a set of rules and counts what it changed.
+// A Redactor is not safe for use by several goroutines at once.
 type Redactor struct {
-	rules  *Rules
-	counts map[string]int // rule name -> number of values changed
+	rules        *Rules
+	counts       map[string]int // rule name -> number of values changed
+	maxLineBytes int            // longest line Process will hold in memory
 }
 
 // NewRedactor returns a Redactor that applies the given rules.
 func NewRedactor(rules *Rules) *Redactor {
 	return &Redactor{
-		rules:  rules,
-		counts: make(map[string]int),
+		rules:        rules,
+		counts:       make(map[string]int),
+		maxLineBytes: DefaultMaxLineBytes,
 	}
 }
 

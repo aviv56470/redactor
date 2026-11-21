@@ -12,6 +12,13 @@ import (
 // hostile line like [[[[[[... can't make the walker recurse forever.
 const maxDepth = 1000
 
+// Errors from RedactLine. Their messages contain none of the line's content,
+// so they are safe to print.
+var (
+	errTooDeep      = errors.New("JSON nested too deeply")
+	errTrailingData = errors.New("unexpected data after JSON value")
+)
+
 // location says which part of a transaction the walker is in.
 type location int
 
@@ -37,7 +44,7 @@ func (rd *Redactor) RedactLine(line []byte) ([]byte, error) {
 	// The line must contain exactly one JSON value. Anything after it
 	// (other than spaces) means the line is broken.
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return nil, errors.New("unexpected data after JSON value")
+		return nil, errTrailingData
 	}
 	return w.buf.Bytes(), nil
 }
@@ -49,7 +56,7 @@ func (rd *Redactor) RedactLine(line []byte) ([]byte, error) {
 // set, every string and number inside the value gets that rule's action.
 func (rd *Redactor) walk(dec *json.Decoder, w *jsonWriter, loc location, forced *KeyRule, depth int) error {
 	if depth > maxDepth {
-		return errors.New("JSON nested too deeply")
+		return errTooDeep
 	}
 
 	tok, err := dec.Token()
