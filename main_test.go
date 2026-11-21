@@ -54,6 +54,22 @@ func TestUsageErrors(t *testing.T) {
 	if code, _, _ := runRedactor(t, "", "missing.ndjson"); code != exitError {
 		t.Errorf("missing input file: exit code %d, want %d", code, exitError)
 	}
+	if code, _, _ := runRedactor(t, "", "--serve", "input.ndjson"); code != exitUsage {
+		t.Errorf("--serve with an input file: exit code %d, want %d", code, exitUsage)
+	}
+}
+
+// In service mode too, rules that can't be loaded stop the program before
+// it starts listening, so no request is ever answered without redaction.
+func TestServeWithBadRulesNeverStarts(t *testing.T) {
+	code, _, stderr := runRedactor(t, "",
+		"--serve", "--addr", "127.0.0.1:0", "--rules", "does-not-exist.yaml")
+	if code != exitError {
+		t.Errorf("exit code %d, want %d", code, exitError)
+	}
+	if strings.Contains(stderr, "listening") {
+		t.Errorf("the service started listening:\n%s", stderr)
+	}
 }
 
 // The provided sample, end to end: every line produces one output line,

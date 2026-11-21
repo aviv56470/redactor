@@ -3,18 +3,25 @@
 // Usage:
 //
 //	redactor [--rules rules.yaml] [input-file]
+//	redactor --serve [--addr :8080] [--rules rules.yaml]
 //
-// It reads standard input when no file is given, writes the redacted lines
-// to standard output, and prints a summary to standard error.
+// The first form reads a file (or standard input when no file is given),
+// writes the redacted lines to standard output, and prints a summary to
+// standard error. The second runs it as an HTTP service.
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/aviv56470/redactor/internal/redact"
+	"github.com/aviv56470/redactor/internal/server"
 )
 
 // Exit codes.
@@ -36,9 +43,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, "usage: redactor [--rules rules.yaml] [input-file]")
+		fmt.Fprintln(stderr, "       redactor --serve [--addr :8080] [--rules rules.yaml]")
 		flags.PrintDefaults()
 	}
 	rulesPath := flags.String("rules", "rules.yaml", "path to the rules file")
+	serve := flags.Bool("serve", false, "run as an HTTP service instead of reading input")
+	addr := flags.String("addr", ":8080", "address to listen on, with --serve")
 	if err := flags.Parse(args); err != nil {
 		return exitUsage
 	}
@@ -50,6 +60,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if err != nil {
 		fmt.Fprintf(stderr, "redactor: %v\n", err)
 		return exitError
+	}
+
+	if *serve {
+		if flags.NArg() > 0 {
+			flags.Usage() // the service reads requests, not a file
+			return exitUsage
+		}
+		return serveHTTP(*addr, rules, stderr)
 	}
 
 	input := stdin
@@ -95,4 +113,20 @@ func printSummary(w io.Writer, rules *redact.Rules, stats redact.Stats, counts m
 	for _, vr := range rules.ValueRules {
 		fmt.Fprintf(w, "  %-20s %d\n", vr.Name, counts[vr.Name])
 	}
+}
+
+// serveHTTP runs the service until the process is told to stop (Ctrl+C, or
+// SIGTERM when Kubernetes stops the pod), then shuts down gracefully.
+func serveHTTP(addr string, rules *redact.Rules, stderr io.Writer) int {
+	logger := log.New(stderr, "redactor: ", log.LstdFlags|log.Lmsgprefix)
+
+	// ctx is cancelled when one of these signals arrives.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := server.Run(ctx, addr, server.Handler(rules, logger), logger); err != nil {
+		logger.Print(err)
+		return exitError
+	}
+	return exitOK
 }
