@@ -443,7 +443,7 @@ every request could use up most of the budget by itself, so the redaction would
 run inside the proxy as a library (a plain function call), or as a helper
 process on the same machine reached through a Unix socket. Next I'd go where
 the time actually goes. The benchmark (`BenchmarkRedactLine`) and the profiler
-show about 43 microseconds per sample line on my laptop (AMD Ryzen 7 3700X),
+show about 43 microseconds per sample line on my PC,
 with about 60% of it in the value-rule regexes and under 20% in reading and
 writing JSON (about 7% in the decoder, 11% in writing strings). Every value
 rule needs some fixed text to match (`@` for an email, `eyJ` for a JWT, `sk_`
